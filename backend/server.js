@@ -348,6 +348,126 @@ app.get('/api/v1/venues', requireAuth, async (req, res) => {
   }
 });
 
+app.get('/api/v1/venues/:venueId/seats', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { venueId } = req.params;
+    const venue = await pool.query('SELECT venue_id FROM venues WHERE venue_id = $1', [venueId]);
+    if (!venue.rows[0]) {
+      return res.status(404).json({ error: 'Venue not found' });
+    }
+
+    const { rows } = await pool.query(
+      'SELECT seat_id, seat_code, row_num, col_num, seat_type FROM seat_maps WHERE venue_id = $1 ORDER BY row_num, col_num',
+      [venueId]
+    );
+
+    res.json({ seats: rows });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/v1/venues', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { name, address, totalSeats } = req.body;
+
+    if (!name || !address) {
+      return res.status(400).json({ error: 'Venue name and address are required' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO venues (name, address, total_seats)
+       VALUES ($1, $2, $3)
+       RETURNING *`,
+      [String(name).trim(), String(address).trim(), Number(totalSeats) || 0]
+    );
+
+    res.status(201).json({ message: 'Venue created successfully', venue: result.rows[0] });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/v1/venues/:venueId', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { venueId } = req.params;
+    const { name, address, totalSeats } = req.body;
+
+    if (!name || !address) {
+      return res.status(400).json({ error: 'Venue name and address are required' });
+    }
+
+    const result = await pool.query(
+      `UPDATE venues
+       SET name = $1,
+           address = $2,
+           total_seats = $3
+       WHERE venue_id = $4
+       RETURNING *`,
+      [String(name).trim(), String(address).trim(), Number(totalSeats) || 0, venueId]
+    );
+
+    if (!result.rows[0]) {
+      return res.status(404).json({ error: 'Venue not found' });
+    }
+
+    res.json({ message: 'Venue updated successfully', venue: result.rows[0] });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/v1/venues/:venueId/seats', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { venueId } = req.params;
+    const { rows, columns, vipColumns } = req.body;
+
+    const venue = await pool.query('SELECT venue_id FROM venues WHERE venue_id = $1', [venueId]);
+    if (!venue.rows[0]) {
+      return res.status(404).json({ error: 'Venue not found' });
+    }
+
+    const rowLabelsInput = Array.isArray(rows) && rows.length > 0 ? rows : ['A', 'B', 'C', 'D', 'E'];
+    const rowLabels = rowLabelsInput.map((value) => String(value).trim()).filter(Boolean).slice(0, 20);
+    const seatColumns = Number(columns) > 0 ? Number(columns) : 8;
+    const vipColumnCount = Number(vipColumns) > 0 ? Number(vipColumns) : 0;
+
+    await pool.query('DELETE FROM seat_maps WHERE venue_id = $1', [venueId]);
+
+    const generatedSeats = [];
+    for (const row of rowLabels) {
+      for (let col = 1; col <= seatColumns; col += 1) {
+        const seatCode = `${row}${col}`;
+        const seatType = vipColumnCount > 0 && col > seatColumns - vipColumnCount ? 'VIP' : 'STANDARD';
+        generatedSeats.push({
+          seat_code: seatCode,
+          row_num: row,
+          col_num: col,
+          seat_type: seatType,
+        });
+      }
+    }
+
+    await Promise.all(
+      generatedSeats.map((seat) => pool.query(
+        'INSERT INTO seat_maps (venue_id, seat_code, row_num, col_num, seat_type) VALUES ($1, $2, $3, $4, $5)',
+        [venueId, seat.seat_code, seat.row_num, seat.col_num, seat.seat_type]
+      ))
+    );
+
+    await pool.query('UPDATE venues SET total_seats = $1 WHERE venue_id = $2', [generatedSeats.length, venueId]);
+
+    res.json({
+      message: 'Venue seat layout updated successfully',
+      venueId,
+      totalSeats: generatedSeats.length,
+      seats: generatedSeats,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/api/v1/events', requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(
@@ -402,10 +522,10 @@ app.get('/api/v1/events/:eventId/seats', requireAuth, async (req, res) => {
     await ensureDefaultSeatMap(venueId);
 
     const bookedSeats = await pool.query(
-      'SELECT seat_code FROM event_seat_bookings WHERE event_id = $1',
+      'SELECT seat_code, user_id FROM event_seat_bookings WHERE event_id = $1',
       [eventId]
     );
-    const bookedSet = new Set(bookedSeats.rows.map((seat) => seat.seat_code));
+    const bookedMap = new Map(bookedSeats.rows.map((seat) => [seat.seat_code, seat.user_id]));
 
     const seatsResult = await pool.query(
       'SELECT seat_id, seat_code, seat_type, row_num, col_num FROM seat_maps WHERE venue_id = $1 ORDER BY row_num, col_num',
@@ -415,7 +535,8 @@ app.get('/api/v1/events/:eventId/seats', requireAuth, async (req, res) => {
     res.json({
       seats: seatsResult.rows.map((seat) => ({
         ...seat,
-        isBooked: bookedSet.has(seat.seat_code),
+        isBooked: bookedMap.has(seat.seat_code),
+        isOwnedByUser: Number(bookedMap.get(seat.seat_code)) === Number(req.session.user.userId),
       })),
     });
   } catch (error) {
@@ -486,6 +607,71 @@ app.post('/api/v1/seats/order', requireAuth, async (req, res) => {
       eventId,
       userId: req.session.user.userId,
       seats: seatResults.map((seat) => ({ seatCode: seat.seat_code, seatType: seat.seat_type })),
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/v1/seats/order', requireAuth, async (req, res) => {
+  try {
+    const { eventId, seatCodes } = req.body;
+
+    if (req.session.user.role === 'admin') {
+      return res.status(403).json({ error: 'Admins do not own customer bookings' });
+    }
+
+    if (!eventId || !Array.isArray(seatCodes) || seatCodes.length === 0) {
+      return res.status(400).json({ error: 'eventId and seatCodes are required' });
+    }
+
+    const normalizedSeatCodes = [...new Set(seatCodes.map((seatCode) => String(seatCode).trim()).filter(Boolean))];
+    if (normalizedSeatCodes.length === 0) {
+      return res.status(400).json({ error: 'At least one valid seat is required' });
+    }
+
+    const eventResult = await pool.query('SELECT venue_id FROM events WHERE event_id = $1', [eventId]);
+    if (!eventResult.rows[0]) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    const venueId = eventResult.rows[0].venue_id;
+    const seatResults = await Promise.all(
+      normalizedSeatCodes.map(async (seatCode) => {
+        const seat = await pool.query(
+          'SELECT seat_id, seat_code FROM seat_maps WHERE venue_id = $1 AND seat_code = $2',
+          [venueId, seatCode]
+        );
+        return seat.rows[0];
+      })
+    );
+
+    if (seatResults.some((seat) => !seat)) {
+      return res.status(400).json({ error: 'One or more selected seats are not in this venue' });
+    }
+
+    const bookingResult = await pool.query(
+      'SELECT seat_code FROM event_seat_bookings WHERE event_id = $1 AND user_id = $2 AND seat_code = ANY($3)',
+      [eventId, req.session.user.userId, normalizedSeatCodes]
+    );
+
+    const ownedSeats = bookingResult.rows.map((seat) => seat.seat_code);
+    const notOwned = normalizedSeatCodes.filter((seatCode) => !ownedSeats.includes(seatCode));
+
+    if (notOwned.length > 0) {
+      return res.status(403).json({ error: `You can only remove your own booked seats: ${notOwned.join(', ')}` });
+    }
+
+    await pool.query(
+      'DELETE FROM event_seat_bookings WHERE event_id = $1 AND user_id = $2 AND seat_code = ANY($3)',
+      [eventId, req.session.user.userId, normalizedSeatCodes]
+    );
+
+    res.json({
+      message: 'Seat booking removed successfully',
+      eventId,
+      userId: req.session.user.userId,
+      seats: ownedSeats,
     });
   } catch (error) {
     res.status(500).json({ error: error.message });

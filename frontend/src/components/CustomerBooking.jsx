@@ -8,6 +8,8 @@ function CustomerBooking({
   selectedEvent,
   onEventSelection,
   onSeatToggle,
+  onSeatRelease,
+  onSeatClear,
   seatMap,
   selectedSeats,
   onSeatConfirm,
@@ -70,13 +72,39 @@ function CustomerBooking({
 
           <div className="seat-controls">
             <span>Selected seats: {selectedSeats.length ? selectedSeats.join(', ') : 'None yet'}</span>
-            <button type="button" className="primary-button small" onClick={onSeatConfirm}>
-              Confirm seats
-            </button>
+            <div className="button-row">
+              <button type="button" className="secondary-button small" onClick={onSeatClear} disabled={!selectedSeats.length}>
+                Clear selection
+              </button>
+              <button type="button" className="primary-button small" onClick={onSeatConfirm}>
+                Confirm seats
+              </button>
+            </div>
           </div>
 
+          {selectedSeats.length > 0 && (
+            <div className="selected-seat-list" style={{ marginBottom: '16px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {selectedSeats.map((seatCode) => (
+                <button
+                  key={seatCode}
+                  type="button"
+                  className="secondary-button small"
+                  onClick={() => onSeatToggle(seatCode, false)}
+                >
+                  Remove {seatCode}
+                </button>
+              ))}
+            </div>
+          )}
+
           {seatMap.length === 0 ? <p className="empty-state">No seat map loaded yet.</p> : (
-            <SeatMap seatMap={seatMap} selectedSeats={selectedSeats} onSeatToggle={onSeatToggle} isAdmin={false} />
+            <SeatMap
+              seatMap={seatMap}
+              selectedSeats={selectedSeats}
+              onSeatToggle={onSeatToggle}
+              onSeatRelease={onSeatRelease}
+              isAdmin={false}
+            />
           )}
         </section>
       )}

@@ -16,11 +16,15 @@ function App() {
   const [events, setEvents] = useState([]);
   const [venues, setVenues] = useState([]);
   const [selectedVenue, setSelectedVenue] = useState('');
+  const [editingVenueId, setEditingVenueId] = useState('');
+  const [venueForm, setVenueForm] = useState({ name: '', address: '', totalSeats: 0 });
+  const [seatLayoutForm, setSeatLayoutForm] = useState({ rows: 'A,B,C,D,E', columns: 8, vipColumns: 2 });
   const [authMode, setAuthMode] = useState('login');
   const [loading, setLoading] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [selectedSeats, setSelectedSeats] = useState([]);
   const [seatMap, setSeatMap] = useState([]);
+  const [venueSeatMap, setVenueSeatMap] = useState([]);
   const [eventForm, setEventForm] = useState(initialEventForm);
   const [authForm, setAuthForm] = useState({
     fullName: '',
@@ -154,6 +158,115 @@ function App() {
     }
   };
 
+  const handleVenueChange = (event) => {
+    const { name, value } = event.target;
+    setVenueForm((current) => ({ ...current, [name]: value }));
+  };
+
+  const handleVenueSubmit = async (event) => {
+    event.preventDefault();
+
+    try {
+      const payload = {
+        name: venueForm.name,
+        address: venueForm.address,
+        totalSeats: Number(venueForm.totalSeats) || 0,
+      };
+
+      const endpoint = editingVenueId ? `/api/v1/venues/${editingVenueId}` : '/api/v1/venues';
+      const method = editingVenueId ? 'PUT' : 'POST';
+
+      const data = await apiRequest(endpoint, {
+        method,
+        body: JSON.stringify(payload),
+      });
+
+      setMessage({ type: 'success', text: data.message || 'Venue saved successfully' });
+      setVenueForm({ name: '', address: '', totalSeats: 0 });
+      setEditingVenueId('');
+      const nextVenueId = data.venue?.venue_id || editingVenueId;
+      if (nextVenueId) {
+        setSelectedVenue(String(nextVenueId));
+        await loadVenueSeatMap(String(nextVenueId));
+      }
+      await loadVenues();
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message });
+    }
+  };
+
+  const handleVenueReset = () => {
+    setEditingVenueId('');
+    setSelectedVenue('');
+    setVenueSeatMap([]);
+    setVenueForm({ name: '', address: '', totalSeats: 0 });
+  };
+
+  const handleVenueEdit = (venue) => {
+    setEditingVenueId(String(venue.venue_id));
+    setSelectedVenue(String(venue.venue_id));
+    setVenueForm({
+      name: venue.name,
+      address: venue.address,
+      totalSeats: venue.total_seats || 0,
+    });
+    setMessage({ type: 'success', text: `Editing venue: ${venue.name}` });
+    setSeatLayoutForm({
+      rows: 'A,B,C,D,E',
+      columns: 8,
+      vipColumns: 2,
+    });
+  };
+
+  const loadVenueSeatMap = async (venueId) => {
+    if (!venueId) {
+      setVenueSeatMap([]);
+      return;
+    }
+
+    try {
+      const data = await apiRequest(`/api/v1/venues/${venueId}/seats`);
+      setVenueSeatMap(data.seats || []);
+    } catch (error) {
+      setVenueSeatMap([]);
+      setMessage({ type: 'error', text: error.message });
+    }
+  };
+
+  const handleSeatLayoutSubmit = async (event) => {
+    event.preventDefault();
+
+    if (!selectedVenue) {
+      setMessage({ type: 'error', text: 'Select a venue to generate the seat map.' });
+      return;
+    }
+
+    try {
+      const data = await apiRequest(`/api/v1/venues/${selectedVenue}/seats`, {
+        method: 'POST',
+        body: JSON.stringify({
+          rows: seatLayoutForm.rows.split(',').map((row) => row.trim()).filter(Boolean),
+          columns: Number(seatLayoutForm.columns) || 8,
+          vipColumns: Number(seatLayoutForm.vipColumns) || 0,
+        }),
+      });
+
+      setVenueSeatMap(data.seats || []);
+      setMessage({ type: 'success', text: `${data.message || 'Seat layout saved successfully'} (${data.totalSeats} seats)` });
+      await loadVenues();
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message });
+    }
+  };
+
+  useEffect(() => {
+    if (selectedVenue) {
+      loadVenueSeatMap(selectedVenue);
+    } else {
+      setVenueSeatMap([]);
+    }
+  }, [selectedVenue]);
+
   const handleEventChange = (event) => {
     const { name, value } = event.target;
     if (name === 'reset') {
@@ -233,6 +346,10 @@ function App() {
     });
   };
 
+  const handleSeatClear = () => {
+    setSelectedSeats([]);
+  };
+
   const handleSeatConfirm = async () => {
     if (!selectedEvent || selectedSeats.length === 0) {
       setMessage({ type: 'error', text: 'Choose at least one seat before confirming.' });
@@ -258,6 +375,27 @@ function App() {
         text: `${data.message}: ${data.seats.map((seat) => seat.seatCode).join(', ')}`,
       });
       setSelectedSeats([]);
+      await loadSeatMap(selectedEvent.event_id);
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message });
+    }
+  };
+
+  const handleSeatRelease = async (seatCode) => {
+    if (!selectedEvent || !seatCode) {
+      return;
+    }
+
+    try {
+      const data = await apiRequest('/api/v1/seats/order', {
+        method: 'DELETE',
+        body: JSON.stringify({ eventId: selectedEvent.event_id, seatCodes: [seatCode] }),
+      });
+
+      setMessage({
+        type: 'success',
+        text: `${data.message}: ${data.seats.join(', ')}`,
+      });
       await loadSeatMap(selectedEvent.event_id);
     } catch (error) {
       setMessage({ type: 'error', text: error.message });
@@ -385,6 +523,19 @@ function App() {
           message={message}
           isAdmin={isAdmin}
           venues={venues}
+          venueForm={venueForm}
+          onVenueChange={handleVenueChange}
+          onVenueSubmit={handleVenueSubmit}
+          onVenueEdit={handleVenueEdit}
+          onVenueReset={handleVenueReset}
+          selectedVenue={selectedVenue}
+          setSelectedVenue={setSelectedVenue}
+          editingVenueId={editingVenueId}
+          setEditingVenueId={setEditingVenueId}
+          seatLayoutForm={seatLayoutForm}
+          setSeatLayoutForm={setSeatLayoutForm}
+          onSeatLayoutSubmit={handleSeatLayoutSubmit}
+          venueSeatMap={venueSeatMap}
         />
       ) : (
         <CustomerBooking
@@ -395,6 +546,8 @@ function App() {
           selectedEvent={selectedEvent}
           onEventSelection={handleEventSelection}
           onSeatToggle={handleSeatToggle}
+          onSeatRelease={handleSeatRelease}
+          onSeatClear={handleSeatClear}
           seatMap={seatMap}
           selectedSeats={selectedSeats}
           onSeatConfirm={handleSeatConfirm}
