@@ -219,7 +219,7 @@ function App() {
   };
 
   const loadVenueSeatMap = async (venueId) => {
-    if (!venueId) {
+    if (!venueId || !isAdmin) {
       setVenueSeatMap([]);
       return;
     }
@@ -260,12 +260,18 @@ function App() {
   };
 
   useEffect(() => {
-    if (selectedVenue) {
-      loadVenueSeatMap(selectedVenue);
-    } else {
+    if (!user) {
       setVenueSeatMap([]);
+      return;
     }
-  }, [selectedVenue]);
+
+    if (isAdmin && selectedVenue) {
+      loadVenueSeatMap(selectedVenue);
+      return;
+    }
+
+    setVenueSeatMap([]);
+  }, [user, isAdmin, selectedVenue]);
 
   const handleEventChange = (event) => {
     const { name, value } = event.target;
@@ -450,18 +456,18 @@ function App() {
               <>
                 <label>
                   Full name
-                  <input name="fullName" value={authForm.fullName} onChange={handleAuthChange} placeholder="Jane Doe" required />
+                  <input name="fullName" value={authForm.fullName} onChange={handleAuthChange} placeholder="Ten nguoi dung" required />
                 </label>
                 <label>
                   Phone
-                  <input name="phone" value={authForm.phone} onChange={handleAuthChange} placeholder="+123456789" required />
+                  <input name="phone" value={authForm.phone} onChange={handleAuthChange} placeholder="+67676767" required />
                 </label>
               </>
             )}
 
             <label>
               Email
-              <input name="email" type="email" value={authForm.email} onChange={handleAuthChange} placeholder="user@example.com" required />
+              <input name="email" type="email" value={authForm.email} onChange={handleAuthChange} placeholder="user@gmail.com" required />
             </label>
 
             <label>
