@@ -1,16 +1,24 @@
 version: '3.8'
 services:
   db:
-    image: mysql:8.0
-    container_name: ticket_mysql
-    restart: always
+    image: postgres:16-alpine
+    container_name: ticket_postgres
+    restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: ticket_booking_db
+      POSTGRES_DB: ticket_booking_db
+      POSTGRES_USER: ticketuser
+      POSTGRES_PASSWORD: ticketpass
     ports:
-      - "3306:3306"
+      - "5432:5432"
     volumes:
-      - db_data:/var/lib/mysql
+      - db_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ticketuser -d ticket_booking_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   phpmyadmin:
     image: phpmyadmin/phpmyadmin
@@ -19,16 +27,27 @@ services:
       - "8080:80"
     environment:
       PMA_HOST: db
+      PMA_PORT: 5432
+      PMA_USER: ticketuser
+      PMA_PASSWORD: ticketpass
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
   backend:
     build: ./backend
     container_name: ticket_backend
     ports:
       - "5000:5000"
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      POSTGRES_DB: ticket_booking_db
+      POSTGRES_USER: ticketuser
+      POSTGRES_PASSWORD: ticketpass
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
   frontend:
     build: ./frontend
