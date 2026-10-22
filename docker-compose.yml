@@ -1,0 +1,43 @@
+version: '3.8'
+services:
+  db:
+    image: mysql:8.0
+    container_name: ticket_mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: ticket_booking_db
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: ticket_pma
+    ports:
+      - "8080:80"
+    environment:
+      PMA_HOST: db
+    depends_on:
+      - db
+
+  backend:
+    build: ./backend
+    container_name: ticket_backend
+    ports:
+      - "5000:5000"
+    depends_on:
+      - db
+
+  frontend:
+    build: ./frontend
+    container_name: ticket_frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  db_data:
+ 
