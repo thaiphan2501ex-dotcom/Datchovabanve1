@@ -470,12 +470,6 @@ function App() {
               <input name="password" type="password" value={authForm.password} onChange={handleAuthChange} placeholder="••••••••" required />
             </label>
 
-            <div className="demo-box">
-              <strong>Demo users</strong>
-              <span>Admin: admin@ticketpro.local / admin123</span>
-              <span>Customer: customer@ticketpro.local / customer123</span>
-            </div>
-
             {message.text && <div className={`message ${message.type}`}>{message.text}</div>}
 
             <button type="submit" className="primary-button">

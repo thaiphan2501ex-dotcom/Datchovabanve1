@@ -89,21 +89,21 @@ CREATE TABLE tickets (
 );
 
 INSERT INTO users (email, phone, full_name, password_hash)
-SELECT 'admin@ticketpro.local', '+1000000000', 'System Admin', '$2b$10$9sxBgehoMFYvHve8b2Axneua.MMaWSFCPUmYp9TMdEuu/GYc9HZkm'
+SELECT 'admin@gmail.com', '+1000000000', 'Admin', '$2b$10$9sxBgehoMFYvHve8b2Axneua.MMaWSFCPUmYp9TMdEuu/GYc9HZkm'
 WHERE NOT EXISTS (
-    SELECT 1 FROM users WHERE email = 'admin@ticketpro.local'
+    SELECT 1 FROM users WHERE email = 'admin@gmail.com'
 );
 
 INSERT INTO users (email, phone, full_name, password_hash)
-SELECT 'customer@ticketpro.local', '+1000000001', 'Test Customer', '$2b$10$9ATKUzFsVSDOiHBMi/TRce.hDuyvhmprmLQqOUEdS2uSgRdmHC.S.'
+SELECT 'customer@gmail.com', '+1000000001', 'Khách test', '$2b$10$9ATKUzFsVSDOiHBMi/TRce.hDuyvhmprmLQqOUEdS2uSgRdmHC.S.'
 WHERE NOT EXISTS (
-    SELECT 1 FROM users WHERE email = 'customer@ticketpro.local'
+    SELECT 1 FROM users WHERE email = 'customer@gmail.com'
 );
 
 INSERT INTO organizers (name, email, phone)
-SELECT 'TicketPro Admin', 'admin@ticketpro.local', '+1000000000'
+SELECT 'TicketPro Admin', 'admin@gmail.com', '+1000000000'
 WHERE NOT EXISTS (
-    SELECT 1 FROM organizers WHERE email = 'admin@ticketpro.local'
+    SELECT 1 FROM organizers WHERE email = 'admin@gmail.com'
 );
 
 INSERT INTO venues (name, address, total_seats)
@@ -116,7 +116,7 @@ INSERT INTO events (organizer_id, venue_id, title, description, banner_url, stat
 SELECT o.organizer_id, v.venue_id, 'Spring Music Festival', 'A seeded demo event for the TicketPro dashboard.', 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a', 'PUBLISHED'
 FROM organizers o
 JOIN venues v ON v.name = 'Main Venue'
-WHERE o.email = 'admin@ticketpro.local'
+WHERE o.email = 'admin@gmail.com'
 AND NOT EXISTS (
     SELECT 1 FROM events WHERE title = 'Spring Music Festival'
 );
