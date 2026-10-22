@@ -442,8 +442,7 @@ function App() {
       <div className="page-shell auth-shell">
         <div className="auth-card">
           <div className="auth-header">
-            <span className="badge">TicketPro</span>
-            <h1>{authMode === 'login' ? 'Welcome back' : 'Create account'}</h1>
+            <h1>{authMode === 'login' ? 'Chào mừng trở lại' : 'Tạo tài khoản'}</h1>
           </div>
 
           <form onSubmit={handleAuthSubmit} className="form-grid">
@@ -478,7 +477,7 @@ function App() {
           </form>
 
           <button type="button" className="secondary-button" onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}>
-            {authMode === 'login' ? 'Need an account? Register' : 'Already have an account? Login'}
+            {authMode === 'login' ? 'Chưa có tài khoản? Đăng ký' : 'Đã có tài khoản? Đăng nhập'}
           </button>
         </div>
       </div>

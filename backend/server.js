@@ -151,19 +151,19 @@ async function ensureDefaultSeatMap(venueId) {
 }
 
 async function ensureDefaultOrganizerVenue() {
-  let organizer = await pool.query('SELECT organizer_id FROM organizers WHERE email = $1', ['admin@ticketpro.local']);
+  let organizer = await pool.query('SELECT organizer_id FROM organizers WHERE email = $1', ['admin@gmail.com']);
   if (!organizer.rows[0]) {
     organizer = await pool.query(
       'INSERT INTO organizers (name, email, phone) VALUES ($1, $2, $3) RETURNING organizer_id',
-      ['TicketPro Admin', 'admin@ticketpro.local', '+1000000000']
+      ['Vé Việt Admin', 'admin@gmail.com', '+1000000000']
     );
   }
 
-  let venue = await pool.query('SELECT venue_id FROM venues WHERE name = $1', ['Main Venue']);
+  let venue = await pool.query('SELECT venue_id FROM venues WHERE name = $1', ['Sân khấu Trung tâm']);
   if (!venue.rows[0]) {
     venue = await pool.query(
       'INSERT INTO venues (name, address, total_seats) VALUES ($1, $2, $3) RETURNING venue_id',
-      ['Main Venue', 'Central City Hall', 200]
+      ['Sân khấu Trung tâm', 'Quận 1, TP. Hồ Chí Minh', 200]
     );
   }
 
@@ -173,42 +173,69 @@ async function ensureDefaultOrganizerVenue() {
   };
 }
 
+async function upsertSeedUser({ email, phone, fullName, passwordHash, role }) {
+  await pool.query('DELETE FROM users WHERE phone = $1 AND email <> $2', [phone, email]);
+
+  const existingByEmail = await pool.query('SELECT user_id FROM users WHERE email = $1', [email]);
+  if (existingByEmail.rows[0]) {
+    await pool.query(
+      `UPDATE users
+       SET phone = $1,
+           full_name = $2,
+           password_hash = $3,
+           role = $4
+       WHERE user_id = $5`,
+      [phone, fullName, passwordHash, role, existingByEmail.rows[0].user_id]
+    );
+    return;
+  }
+
+  const existingByPhone = await pool.query('SELECT user_id FROM users WHERE phone = $1', [phone]);
+  if (existingByPhone.rows[0]) {
+    await pool.query(
+      `UPDATE users
+       SET email = $1,
+           full_name = $2,
+           password_hash = $3,
+           role = $4
+       WHERE user_id = $5`,
+      [email, fullName, passwordHash, role, existingByPhone.rows[0].user_id]
+    );
+    return;
+  }
+
+  await pool.query(
+    'INSERT INTO users (email, phone, full_name, password_hash, role) VALUES ($1, $2, $3, $4, $5)',
+    [email, phone, fullName, passwordHash, role]
+  );
+}
+
 async function ensureSeedData() {
-  const adminEmail = 'admin@ticketpro.local';
-  const customerEmail = 'customer@ticketpro.local';
+  const adminEmail = 'admin@gmail.com';
+  const customerEmail = 'customer@gmail.com';
   const defaultPasswordHash = '$2b$10$9sxBgehoMFYvHve8b2Axneua.MMaWSFCPUmYp9TMdEuu/GYc9HZkm';
   const customerPasswordHash = '$2b$10$9ATKUzFsVSDOiHBMi/TRce.hDuyvhmprmLQqOUEdS2uSgRdmHC.S.';
 
-  const adminExists = await pool.query('SELECT user_id FROM users WHERE email = $1', [adminEmail]);
-  if (!adminExists.rows[0]) {
-    await pool.query(
-      'INSERT INTO users (email, phone, full_name, password_hash, role) VALUES ($1, $2, $3, $4, $5)',
-      [adminEmail, '+1000000000', 'System Admin', defaultPasswordHash, 'admin']
-    );
-  } else {
-    await pool.query(
-      'UPDATE users SET role = $1 WHERE email = $2 AND role IS DISTINCT FROM $1',
-      ['admin', adminEmail]
-    );
-  }
+  await upsertSeedUser({
+    email: adminEmail,
+    phone: '+1000000000',
+    fullName: 'Quản trị viên hệ thống',
+    passwordHash: defaultPasswordHash,
+    role: 'admin',
+  });
 
-  const customerExists = await pool.query('SELECT user_id FROM users WHERE email = $1', [customerEmail]);
-  if (!customerExists.rows[0]) {
-    await pool.query(
-      'INSERT INTO users (email, phone, full_name, password_hash, role) VALUES ($1, $2, $3, $4, $5)',
-      [customerEmail, '+1000000001', 'Test Customer', customerPasswordHash, 'customer']
-    );
-  } else {
-    await pool.query(
-      'UPDATE users SET role = $1 WHERE email = $2 AND role IS DISTINCT FROM $1',
-      ['customer', customerEmail]
-    );
-  }
+  await upsertSeedUser({
+    email: customerEmail,
+    phone: '+1000000001',
+    fullName: 'Khách hàng thử nghiệm',
+    passwordHash: customerPasswordHash,
+    role: 'customer',
+  });
 
   const { organizerId, venueId } = await ensureDefaultOrganizerVenue();
   await ensureDefaultSeatMap(venueId);
 
-  const eventExists = await pool.query('SELECT event_id FROM events WHERE title = $1', ['Spring Music Festival']);
+  const eventExists = await pool.query('SELECT event_id FROM events WHERE title = $1', ['Lễ hội âm nhạc mùa xuân']);
   if (!eventExists.rows[0]) {
     await pool.query(
       `INSERT INTO events (organizer_id, venue_id, title, description, banner_url, status)
@@ -216,8 +243,8 @@ async function ensureSeedData() {
       [
         organizerId,
         venueId,
-        'Spring Music Festival',
-        'A seeded demo event for the TicketPro dashboard.',
+        'Lễ hội âm nhạc mùa xuân',
+        'Sự kiện demo từ giao diện Vé Việt.',
         'https://images.unsplash.com/photo-1501386761578-eac5c94b800a',
         'PUBLISHED',
       ]

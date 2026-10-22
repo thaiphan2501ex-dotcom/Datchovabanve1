@@ -4,6 +4,7 @@ CREATE TABLE users (
     phone VARCHAR(20) UNIQUE NOT NULL,
     full_name VARCHAR(100) NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
+    role VARCHAR(20) NOT NULL DEFAULT 'customer',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -88,35 +89,35 @@ CREATE TABLE tickets (
     UNIQUE (showtime_id, seat_id)
 );
 
-INSERT INTO users (email, phone, full_name, password_hash)
-SELECT 'admin@gmail.com', '+1000000000', 'Admin', '$2b$10$9sxBgehoMFYvHve8b2Axneua.MMaWSFCPUmYp9TMdEuu/GYc9HZkm'
+INSERT INTO users (email, phone, full_name, password_hash, role)
+SELECT 'admin@gmail.com', '+1000000000', 'Quản trị viên hệ thống', '$2b$10$9sxBgehoMFYvHve8b2Axneua.MMaWSFCPUmYp9TMdEuu/GYc9HZkm', 'admin'
 WHERE NOT EXISTS (
     SELECT 1 FROM users WHERE email = 'admin@gmail.com'
 );
 
-INSERT INTO users (email, phone, full_name, password_hash)
-SELECT 'customer@gmail.com', '+1000000001', 'Khách test', '$2b$10$9ATKUzFsVSDOiHBMi/TRce.hDuyvhmprmLQqOUEdS2uSgRdmHC.S.'
+INSERT INTO users (email, phone, full_name, password_hash, role)
+SELECT 'customer@gmail.com', '+1000000001', 'Khách hàng thử nghiệm', '$2b$10$9ATKUzFsVSDOiHBMi/TRce.hDuyvhmprmLQqOUEdS2uSgRdmHC.S.', 'customer'
 WHERE NOT EXISTS (
     SELECT 1 FROM users WHERE email = 'customer@gmail.com'
 );
 
 INSERT INTO organizers (name, email, phone)
-SELECT 'TicketPro Admin', 'admin@gmail.com', '+1000000000'
+SELECT 'Vé Việt Admin', 'admin@gmail.com', '+1000000000'
 WHERE NOT EXISTS (
     SELECT 1 FROM organizers WHERE email = 'admin@gmail.com'
 );
 
 INSERT INTO venues (name, address, total_seats)
-SELECT 'Main Venue', 'Central City Hall', 200
+SELECT 'Sân khấu Trung tâm', 'Quận 1, TP. Hồ Chí Minh', 200
 WHERE NOT EXISTS (
-    SELECT 1 FROM venues WHERE name = 'Main Venue'
+    SELECT 1 FROM venues WHERE name = 'Sân khấu Trung tâm'
 );
 
 INSERT INTO events (organizer_id, venue_id, title, description, banner_url, status)
-SELECT o.organizer_id, v.venue_id, 'Spring Music Festival', 'A seeded demo event for the TicketPro dashboard.', 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a', 'PUBLISHED'
+SELECT o.organizer_id, v.venue_id, 'Lễ hội âm nhạc mùa xuân', 'Sự kiện demo từ giao diện Vé Việt.', 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a', 'PUBLISHED'
 FROM organizers o
-JOIN venues v ON v.name = 'Main Venue'
+JOIN venues v ON v.name = 'Sân khấu Trung tâm'
 WHERE o.email = 'admin@gmail.com'
 AND NOT EXISTS (
-    SELECT 1 FROM events WHERE title = 'Spring Music Festival'
+    SELECT 1 FROM events WHERE title = 'Lễ hội âm nhạc mùa xuân'
 );
