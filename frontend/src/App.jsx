@@ -1,19 +1,26 @@
 import { useEffect, useState } from 'react';
 import './App.css';
+import AdminDashboard from './components/AdminDashboard.jsx';
+import CustomerBooking from './components/CustomerBooking.jsx';
 
 const initialEventForm = {
   title: '',
   description: '',
   status: 'DRAFT',
   bannerUrl: '',
+  venueId: '',
 };
 
 function App() {
   const [user, setUser] = useState(null);
   const [events, setEvents] = useState([]);
+  const [venues, setVenues] = useState([]);
+  const [selectedVenue, setSelectedVenue] = useState('');
   const [authMode, setAuthMode] = useState('login');
   const [loading, setLoading] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const [selectedSeats, setSelectedSeats] = useState([]);
+  const [seatMap, setSeatMap] = useState([]);
   const [eventForm, setEventForm] = useState(initialEventForm);
   const [authForm, setAuthForm] = useState({
     fullName: '',
@@ -22,6 +29,7 @@ function App() {
     password: '',
   });
   const [message, setMessage] = useState({ type: '', text: '' });
+  const isAdmin = user?.role === 'admin';
 
   const apiRequest = async (url, options = {}) => {
     const response = await fetch(url, {
@@ -42,11 +50,34 @@ function App() {
     return data;
   };
 
+  const resetEventForm = (nextVenueId = '') => {
+    setEventForm({
+      ...initialEventForm,
+      venueId: nextVenueId || (venues[0]?.venue_id ? String(venues[0].venue_id) : ''),
+    });
+  };
+
+  const loadVenues = async () => {
+    try {
+      const data = await apiRequest('/api/v1/venues');
+      const nextVenues = data.venues || [];
+      setVenues(nextVenues);
+      if (!selectedVenue && nextVenues[0]) {
+        setSelectedVenue(String(nextVenues[0].venue_id));
+      }
+      if (!eventForm.venueId && nextVenues[0]) {
+        setEventForm((current) => ({ ...current, venueId: String(nextVenues[0].venue_id) }));
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message });
+    }
+  };
+
   const loadSession = async () => {
     try {
       const data = await apiRequest('/api/v1/auth/session');
       setUser(data.user);
-      await loadEvents();
+      await Promise.all([loadEvents(), loadVenues()]);
     } catch {
       setUser(null);
       setEvents([]);
@@ -67,6 +98,12 @@ function App() {
   useEffect(() => {
     loadSession();
   }, []);
+
+  useEffect(() => {
+    if (!selectedVenue && venues.length) {
+      setSelectedVenue(String(venues[0].venue_id));
+    }
+  }, [selectedVenue, venues]);
 
   const handleAuthChange = (event) => {
     const { name, value } = event.target;
@@ -96,7 +133,7 @@ function App() {
       setUser(data.user);
       setAuthForm({ fullName: '', email: '', phone: '', password: '' });
       setMessage({ type: 'success', text: data.message || 'Success' });
-      await loadEvents();
+      await Promise.all([loadEvents(), loadVenues()]);
     } catch (error) {
       setMessage({ type: 'error', text: error.message });
     }
@@ -107,6 +144,9 @@ function App() {
       await apiRequest('/api/v1/auth/logout', { method: 'POST' });
       setUser(null);
       setSelectedEvent(null);
+      setSelectedVenue('');
+      setSelectedSeats([]);
+      setSeatMap([]);
       setEvents([]);
       setMessage({ type: 'success', text: 'Logged out successfully' });
     } catch (error) {
@@ -116,6 +156,10 @@ function App() {
 
   const handleEventChange = (event) => {
     const { name, value } = event.target;
+    if (name === 'reset') {
+      resetEventForm();
+      return;
+    }
     setEventForm((current) => ({ ...current, [name]: value }));
   };
 
@@ -128,6 +172,7 @@ function App() {
         description: eventForm.description,
         status: eventForm.status,
         bannerUrl: eventForm.bannerUrl,
+        venueId: eventForm.venueId || undefined,
       };
 
       const endpoint = selectedEvent
@@ -142,7 +187,7 @@ function App() {
       });
 
       setMessage({ type: 'success', text: data.message || 'Saved successfully' });
-      setEventForm(initialEventForm);
+      resetEventForm();
       setSelectedEvent(null);
       await loadEvents();
     } catch (error) {
@@ -150,14 +195,73 @@ function App() {
     }
   };
 
-  const handleEdit = (eventItem) => {
+  const handleEdit = async (eventItem) => {
     setSelectedEvent(eventItem);
+    setSelectedSeats([]);
     setEventForm({
       title: eventItem.title,
       description: eventItem.description || '',
       status: eventItem.status || 'DRAFT',
       bannerUrl: eventItem.banner_url || '',
+      venueId: eventItem.venue_id ? String(eventItem.venue_id) : '',
     });
+    await loadSeatMap(eventItem.event_id);
+    setMessage({ type: 'success', text: `Editing event: ${eventItem.title}` });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const loadSeatMap = async (eventId) => {
+    try {
+      const data = await apiRequest(`/api/v1/events/${eventId}/seats`);
+      setSeatMap(data.seats || []);
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message });
+    }
+  };
+
+  const handleSeatToggle = (seatCode, isBooked = false) => {
+    if (isBooked) {
+      return;
+    }
+
+    setSelectedSeats((current) => {
+      if (current.includes(seatCode)) {
+        return current.filter((seat) => seat !== seatCode);
+      }
+
+      return [...current, seatCode];
+    });
+  };
+
+  const handleSeatConfirm = async () => {
+    if (!selectedEvent || selectedSeats.length === 0) {
+      setMessage({ type: 'error', text: 'Choose at least one seat before confirming.' });
+      return;
+    }
+
+    if (isAdmin) {
+      setMessage({
+        type: 'success',
+        text: `Seat plan updated for ${selectedEvent.title}: ${selectedSeats.join(', ')}`,
+      });
+      return;
+    }
+
+    try {
+      const data = await apiRequest('/api/v1/seats/order', {
+        method: 'POST',
+        body: JSON.stringify({ eventId: selectedEvent.event_id, seatCodes: selectedSeats }),
+      });
+
+      setMessage({
+        type: 'success',
+        text: `${data.message}: ${data.seats.map((seat) => seat.seatCode).join(', ')}`,
+      });
+      setSelectedSeats([]);
+      await loadSeatMap(selectedEvent.event_id);
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message });
+    }
   };
 
   const handleDelete = async (eventId) => {
@@ -182,6 +286,13 @@ function App() {
     } catch (error) {
       setMessage({ type: 'error', text: error.message });
     }
+  };
+
+  const handleEventSelection = async (eventItem) => {
+    setSelectedEvent(eventItem);
+    setSelectedSeats([]);
+    await loadSeatMap(eventItem.event_id);
+    setMessage({ type: 'success', text: `Seat selection ready for ${eventItem.title}` });
   };
 
   if (loading) {
@@ -221,6 +332,12 @@ function App() {
               <input name="password" type="password" value={authForm.password} onChange={handleAuthChange} placeholder="••••••••" required />
             </label>
 
+            <div className="demo-box">
+              <strong>Demo users</strong>
+              <span>Admin: admin@ticketpro.local / admin123</span>
+              <span>Customer: customer@ticketpro.local / customer123</span>
+            </div>
+
             {message.text && <div className={`message ${message.type}`}>{message.text}</div>}
 
             <button type="submit" className="primary-button">
@@ -241,7 +358,7 @@ function App() {
       <header className="topbar">
         <div>
           <p className="eyebrow">Authenticated dashboard</p>
-          <h1>TicketPro Events</h1>
+          <h1>{isAdmin ? 'Admin Console' : 'Customer Booking'}</h1>
         </div>
         <div className="user-panel">
           <span>{user.fullName}</span>
@@ -251,83 +368,38 @@ function App() {
 
       {message.text && <div className={`message ${message.type}`}>{message.text}</div>}
 
-      <main className="dashboard-grid">
-        <section className="panel">
-          <div className="panel-header">
-            <h2>{selectedEvent ? 'Edit event' : 'Create new event'}</h2>
-          </div>
-
-          <form onSubmit={handleEventSubmit} className="form-grid">
-            <label>
-              Event title
-              <input name="title" value={eventForm.title} onChange={handleEventChange} placeholder="Spring festival" required />
-            </label>
-
-            <label>
-              Banner URL
-              <input name="bannerUrl" value={eventForm.bannerUrl} onChange={handleEventChange} placeholder="https://example.com/banner.jpg" />
-            </label>
-
-            <label>
-              Status
-              <select name="status" value={eventForm.status} onChange={handleEventChange}>
-                <option value="DRAFT">Draft</option>
-                <option value="PUBLISHED">Published</option>
-                <option value="CANCELLED">Cancelled</option>
-              </select>
-            </label>
-
-            <label>
-              Description
-              <textarea name="description" value={eventForm.description} onChange={handleEventChange} rows="4" placeholder="Describe the event" />
-            </label>
-
-            <div className="button-row">
-              <button type="submit" className="primary-button">
-                {selectedEvent ? 'Update event' : 'Create event'}
-              </button>
-              {selectedEvent && (
-                <button type="button" className="secondary-button" onClick={() => { setSelectedEvent(null); setEventForm(initialEventForm); }}>
-                  Cancel
-                </button>
-              )}
-            </div>
-          </form>
-        </section>
-
-        <section className="panel events-panel">
-          <div className="panel-header">
-            <h2>Events</h2>
-          </div>
-
-          <div className="event-list">
-            {events.length === 0 ? (
-              <p className="empty-state">No events yet.</p>
-            ) : (
-              events.map((eventItem) => (
-                <article key={eventItem.event_id} className="event-card">
-                  <div className="event-banner" style={{ backgroundImage: eventItem.banner_url ? `url(${eventItem.banner_url})` : 'linear-gradient(135deg, #0f172a, #1d4ed8)' }} />
-                  <div className="event-body">
-                    <div className="event-meta">
-                      <span className="status-pill">{eventItem.status}</span>
-                      <span>{eventItem.organizer_name}</span>
-                    </div>
-                    <h3>{eventItem.title}</h3>
-                    <p>{eventItem.description || 'No description provided.'}</p>
-                    <div className="event-actions">
-                      <button type="button" className="secondary-button" onClick={() => handleEdit(eventItem)}>Edit</button>
-                      <button type="button" className="secondary-button" onClick={() => handleDelete(eventItem.event_id)}>Delete</button>
-                      <button type="button" className="primary-button small" onClick={() => handleStatusPatch(eventItem.event_id, eventItem.status === 'PUBLISHED' ? 'DRAFT' : 'PUBLISHED')}>
-                        {eventItem.status === 'PUBLISHED' ? 'Move to draft' : 'Publish'}
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              ))
-            )}
-          </div>
-        </section>
-      </main>
+      {isAdmin ? (
+        <AdminDashboard
+          events={events}
+          selectedEvent={selectedEvent}
+          setSelectedEvent={setSelectedEvent}
+          eventForm={eventForm}
+          onEventChange={handleEventChange}
+          onEventSubmit={handleEventSubmit}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+          onStatusPatch={handleStatusPatch}
+          onHandleSeatToggle={handleSeatToggle}
+          seatMap={seatMap}
+          selectedSeats={selectedSeats}
+          message={message}
+          isAdmin={isAdmin}
+          venues={venues}
+        />
+      ) : (
+        <CustomerBooking
+          venues={venues}
+          selectedVenue={selectedVenue}
+          setSelectedVenue={setSelectedVenue}
+          events={events}
+          selectedEvent={selectedEvent}
+          onEventSelection={handleEventSelection}
+          onSeatToggle={handleSeatToggle}
+          seatMap={seatMap}
+          selectedSeats={selectedSeats}
+          onSeatConfirm={handleSeatConfirm}
+        />
+      )}
     </div>
   );
 }

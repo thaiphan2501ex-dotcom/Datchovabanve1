@@ -87,3 +87,36 @@ CREATE TABLE tickets (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (showtime_id, seat_id)
 );
+
+INSERT INTO users (email, phone, full_name, password_hash)
+SELECT 'admin@ticketpro.local', '+1000000000', 'System Admin', '$2b$10$9sxBgehoMFYvHve8b2Axneua.MMaWSFCPUmYp9TMdEuu/GYc9HZkm'
+WHERE NOT EXISTS (
+    SELECT 1 FROM users WHERE email = 'admin@ticketpro.local'
+);
+
+INSERT INTO users (email, phone, full_name, password_hash)
+SELECT 'customer@ticketpro.local', '+1000000001', 'Test Customer', '$2b$10$9ATKUzFsVSDOiHBMi/TRce.hDuyvhmprmLQqOUEdS2uSgRdmHC.S.'
+WHERE NOT EXISTS (
+    SELECT 1 FROM users WHERE email = 'customer@ticketpro.local'
+);
+
+INSERT INTO organizers (name, email, phone)
+SELECT 'TicketPro Admin', 'admin@ticketpro.local', '+1000000000'
+WHERE NOT EXISTS (
+    SELECT 1 FROM organizers WHERE email = 'admin@ticketpro.local'
+);
+
+INSERT INTO venues (name, address, total_seats)
+SELECT 'Main Venue', 'Central City Hall', 200
+WHERE NOT EXISTS (
+    SELECT 1 FROM venues WHERE name = 'Main Venue'
+);
+
+INSERT INTO events (organizer_id, venue_id, title, description, banner_url, status)
+SELECT o.organizer_id, v.venue_id, 'Spring Music Festival', 'A seeded demo event for the TicketPro dashboard.', 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a', 'PUBLISHED'
+FROM organizers o
+JOIN venues v ON v.name = 'Main Venue'
+WHERE o.email = 'admin@ticketpro.local'
+AND NOT EXISTS (
+    SELECT 1 FROM events WHERE title = 'Spring Music Festival'
+);
